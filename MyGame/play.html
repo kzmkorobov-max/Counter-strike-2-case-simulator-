@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CS2 Mobile Simulator</title>
+    <style>
+        :root {
+            --blue: #4b69ff; --purple: #8847ff; --pink: #d32ce6; --red: #eb4b4b; --gold: #caab05;
+        }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background: #000; font-family: sans-serif; 
+            touch-action: manipulation; /* Убирает задержку клика на мобилках */
+        }
+        
+        .bg { position: fixed; width: 100%; height: 100%; background: url('bg.jpg') no-repeat center/cover; z-index: 1; filter: brightness(0.4); }
+
+        /* Кнопка инвентаря адаптивная */
+        #inv-btn { 
+            position: absolute; top: 15px; left: 15px; width: 120px; 
+            max-width: 30%; cursor: pointer; z-index: 100; 
+        }
+
+        /* Окно инвентаря */
+        #inventory-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 200; flex-direction: column; align-items: center; padding-top: 20px;
+        }
+        .inv-grid {
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); 
+            gap: 10px; width: 90%; max-height: 70vh; overflow-y: auto; padding: 10px;
+        }
+        .inv-item {
+            aspect-ratio: 1/1; background-image: url('loot.jpg'); background-size: 600% 300%;
+            border-bottom: 3px solid #555;
+        }
+
+        /* Основной интерфейс */
+        .ui-wrapper { 
+            position: relative; z-index: 2; height: 100vh; 
+            display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; 
+        }
+
+        #case { width: 70%; max-width: 300px; z-index: 5; }
+
+        /* Рулетка адаптивная */
+        .roulette-window { 
+            display: none; position: relative; width: 95%; max-width: 600px; height: 120px; 
+            background: rgba(15, 15, 15, 0.95); border: 2px solid #333; overflow: hidden; 
+        }
+        .pointer { 
+            position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; 
+            background: var(--gold); z-index: 10; transform: translateX(-50%); 
+        }
+        .tape { display: flex; position: absolute; left: 0; top: 0; height: 100%; }
+
+        .item { 
+            min-width: 110px; height: 110px; margin: 5px; 
+            background-image: url('loot.jpg'); background-size: 600% 300%; 
+            border-bottom: 4px solid #555; 
+        }
+        
+        #open-btn { width: 60%; max-width: 220px; cursor: pointer; }
+
+        /* Цвета редкости */
+        .blue { border-color: var(--blue) !important; }
+        .purple { border-color: var(--purple) !important; }
+        .pink { border-color: var(--pink) !important; }
+        .red { border-color: var(--red) !important; }
+        .gold { border-color: var(--gold) !important; }
+
+        .shake { animation: shake-anim 0.1s infinite; }
+        @keyframes shake-anim { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(2px,2px); } 75% { transform: translate(-2px,-2px); } }
+        
+        .close-inv { margin-top: 20px; padding: 12px 40px; background: var(--gold); border: none; color: #000; font-weight: bold; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="bg"></div>
+
+    <img src="inv.png" id="inv-btn" onclick="toggleInventory(true)">
+
+    <div id="inventory-overlay">
+        <h3 style="color: white; margin-bottom: 10px;">ИНВЕНТАРЬ</h3>
+        <div class="inv-grid" id="inv-grid"></div>
+        <button class="close-inv" onclick="toggleInventory(false)">НАЗАД</button>
+    </div>
+
+    <div class="ui-wrapper">
+        <img src="box.jpg" id="case">
+        
+        <div class="roulette-window" id="roulette">
+            <div class="pointer"></div>
+            <div class="tape" id="tape"></div>
+        </div>
+
+        <img src="button.png" id="open-btn">
+    </div>
+
+    <script>
+        const tape = document.getElementById('tape');
+        const roulette = document.getElementById('roulette');
+        const btn = document.getElementById('open-btn');
+        const caseImg = document.getElementById('case');
+        const invGrid = document.getElementById('inv-grid');
+        
+        // Загрузка инвентаря из памяти (localStorage)
+        let myInventory = JSON.parse(localStorage.getItem('cs_inv')) || [];
+
+        const itemsConfig = [
+            { id: 0, rarity: 'blue' }, { id: 1, rarity: 'blue' }, { id: 2, rarity: 'blue' },
+            { id: 3, rarity: 'purple' }, { id: 4, rarity: 'purple' }, { id: 5, rarity: 'purple' },
+            { id: 6, rarity: 'pink' }, { id: 7, rarity: 'pink' }, { id: 8, rarity: 'pink' },
+            { id: 9, rarity: 'red' }, { id: 10, rarity: 'red' }, { id: 11, rarity: 'red' },
+            { id: 16, rarity: 'gold' }
+        ];
+
+        function getBackgroundPos(id) {
+            const cols = 6;
+            const row = Math.floor(id / cols);
+            const col = id % cols;
+            return `${(col * 100 / (cols - 1))}% ${(row * 100 / 2)}%`;
+        }
+
+        function createItem(config, isInv = false) {
+            const div = document.createElement('div');
+            div.className = `${isInv ? 'inv-item' : 'item'} ${config.rarity}`;
+            div.style.backgroundPosition = getBackgroundPos(config.id);
+            return div;
+        }
+
+        function toggleInventory(show) {
+            document.getElementById('inventory-overlay').style.display = show ? 'flex' : 'none';
+            if (show) renderInventory();
+        }
+
+        function renderInventory() {
+            invGrid.innerHTML = '';
+            myInventory.forEach(item => {
+                invGrid.appendChild(createItem(item, true));
+            });
+        }
+
+        btn.addEventListener('click', () => {
+            caseImg.classList.add('shake');
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+
+            setTimeout(() => {
+                caseImg.classList.remove('shake');
+                roulette.style.display = 'block';
+                startSpin();
+            }, 800);
+        });
+
+        function startSpin() {
+            tape.innerHTML = '';
+            tape.style.transition = 'none';
+            tape.style.transform = 'translateX(0)';
+
+            const spinItems = [];
+            for (let i = 0; i < 40; i++) {
+                const randomItem = itemsConfig[Math.floor(Math.random() * itemsConfig.length)];
+                spinItems.push(randomItem);
+                tape.appendChild(createItem(randomItem));
+            }
+
+            const winItem = spinItems[35];
+
+            setTimeout(() => {
+                tape.style.transition = 'transform 4s cubic-bezier(0.1, 0, 0.1, 1)';
+                const itemWidth = 120; // 110px + 10px margin
+                const centerOffset = roulette.offsetWidth / 2;
+                const randomOffset = Math.floor(Math.random() * 60) - 30;
+                const finalPosition = -(35 * itemWidth - centerOffset + 60 + randomOffset);
+                
+                tape.style.transform = `translateX(${finalPosition}px)`;
+
+                setTimeout(() => {
+                    myInventory.push(winItem);
+                    localStorage.setItem('cs_inv', JSON.stringify(myInventory)); // Сохраняем в память
+                    
+                    setTimeout(() => {
+                        roulette.style.display = 'none';
+                        btn.style.pointerEvents = 'auto';
+                        btn.style.opacity = '1';
+                    }, 1500);
+                }, 4000);
+            }, 50);
+        }
+    </script>
+</body>
+</html>
